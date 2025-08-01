@@ -7,13 +7,16 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import os
 
-# Database setup
+# ------------------ Database Setup ------------------
 conn = sqlite3.connect("users.db", check_same_thread=False)
 c = conn.cursor()
-c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)''')
+c.execute('''CREATE TABLE IF NOT EXISTS users (
+    username TEXT PRIMARY KEY,
+    password TEXT NOT NULL
+)''')
 conn.commit()
 
-# Functions to handle authentication
+# ------------------ Auth Functions ------------------
 def signup_user(username, password):
     hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     try:
@@ -30,19 +33,20 @@ def login_user(username, password):
         return True
     return False
 
-# Expense file functions
+# ------------------ Expense File Functions ------------------
 def load_expense_data(username):
+    os.makedirs("data", exist_ok=True)
     file = f"data/{username}_expenses.csv"
     if os.path.exists(file):
         return pd.read_csv(file, parse_dates=["Date"])
     return pd.DataFrame(columns=["Date", "Category", "Description", "Amount"])
 
 def save_expense_data(username, df):
-    file = f"data/{username}_expenses.csv"
     os.makedirs("data", exist_ok=True)
+    file = f"data/{username}_expenses.csv"
     df.to_csv(file, index=False)
 
-# App UI
+# ------------------ Streamlit App UI ------------------
 st.set_page_config(page_title="Expense Tracker", layout="wide")
 st.title("💸 Personal Expense Tracker")
 
@@ -55,33 +59,37 @@ if "logged_in" not in st.session_state:
 
 if choice == "Signup":
     st.subheader("Create New Account")
-    new_user = st.text_input("Username")
-    new_password = st.text_input("Password", type='password')
+    new_user = st.text_input("Username", key="signup_user")
+    new_password = st.text_input("Password", type='password', key="signup_pass")
     if st.button("Signup"):
-        if signup_user(new_user, new_password):
-            st.success("Account created. Please login.")
+        if new_user and new_password:
+            if signup_user(new_user.strip(), new_password):
+                st.success("Account created. Please login.")
+            else:
+                st.error("Username already exists.")
         else:
-            st.error("Username already exists.")
+            st.warning("Please enter both username and password.")
 
 elif choice == "Login":
     st.subheader("Login to Your Account")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type='password')
+    username = st.text_input("Username", key="login_user")
+    password = st.text_input("Password", type='password', key="login_pass")
     if st.button("Login"):
-        if login_user(username, password):
+        if login_user(username.strip(), password):
             st.session_state.logged_in = True
-            st.session_state.username = username
+            st.session_state.username = username.strip()
             st.success(f"Welcome, {username}!")
         else:
             st.error("Incorrect username or password.")
 
-# Expense Tracker Interface
+# ------------------ Main Tracker ------------------
 if st.session_state.logged_in:
     username = st.session_state.username
     st.sidebar.success(f"Logged in as {username}")
 
     df = load_expense_data(username)
 
+    # Form to Add Expense
     st.sidebar.header("Add Expense")
     with st.sidebar.form("expense_form"):
         date = st.date_input("Date", value=datetime.today())
@@ -96,13 +104,15 @@ if st.session_state.logged_in:
             save_expense_data(username, df)
             st.success("Expense added successfully.")
 
+    # Show Table
     st.subheader("📄 Expense Table")
-    st.dataframe(df.sort_values("Date", ascending=False), use_container_width=True)
-
     if not df.empty:
-        st.subheader("📊 Visualizations")
+        st.dataframe(df.sort_values("Date", ascending=False), use_container_width=True)
 
+        # Visuals
+        st.subheader("📊 Visualizations")
         col1, col2 = st.columns(2)
+
         with col1:
             st.markdown("### Category-wise Expenses")
             category_sum = df.groupby("Category")["Amount"].sum()
@@ -118,11 +128,13 @@ if st.session_state.logged_in:
             st.line_chart(monthly_sum)
 
         st.download_button(
-            label="⬇ Download My Expenses (Excel)",
+            label="⬇ Download My Expenses (CSV)",
             data=df.to_csv(index=False).encode('utf-8'),
             file_name=f"{username}_expenses.csv",
             mime="text/csv"
         )
+    else:
+        st.info("No expenses yet. Add some from the sidebar.")
 
     if st.button("Logout"):
         st.session_state.logged_in = False
