@@ -1,0 +1,6 @@
+# Ignore data and user files
+*.db
+*.csv
+/data/
+__pycache__/
+*.pyc
